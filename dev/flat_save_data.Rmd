@@ -4,6 +4,10 @@ author: "Bruno Rodrigues"
 date: "`r Sys.Date()`"
 ---
 
+```{r development, include = FALSE}
+library(testthat)
+```
+
 ```{r, warning=FALSE, message=FALSE}
 library(dplyr)
 library(ggplot2)
@@ -25,8 +29,20 @@ The function below uses the permanent URL from the Open Data Portal to access th
 but I have also rehosted the data, and use my link to download the data (for archival
 purposes):
 
-```{r}
-get_raw_data <- function(url = "https://data.public.lu/fr/datasets/r/14b0156e-ff87-4a36-a867-933fc9a6f903"){
+```{r function-get_raw_data}
+#' get_raw_data Gets raw nominal house price data from LU Open Data Portal
+#' 
+#' @param url Option: Persistent url to the data
+#' @importFrom readxl excel_sheets read_excel
+#' @importFrom utils download.file
+#' @importFrom dplyr mutate rename select
+#' @importFrom stringr str_trim
+#' @importFrom janitor clear_names
+#' @importFrom purrr map_dfr
+#' @return A data frame
+#' @export 
+
+get_raw_data <- function(url = "https://github.com/b-rodrigues/rap4all/raw/master/datasets/vente-maison-2010-2021.xlsx"){
 
   raw_data <- tempfile(fileext = ".xlsx")
 
