@@ -41,7 +41,6 @@ purposes):
 #' @importFrom purrr map_dfr
 #' @return A data frame
 #' @export 
-
 get_raw_data <- function(url = "https://github.com/b-rodrigues/rap4all/raw/master/datasets/vente-maison-2010-2021.xlsx"){
 
   raw_data <- tempfile(fileext = ".xlsx")
@@ -86,16 +85,23 @@ then "Luxembourg". "Pétange" is also spelled non-consistently, and we also need
 to convert columns to right type. We also directly remove rows where the
 locality contains information on the "Source":
 
-```{r}
+```{r function-clean_raw_data}
+#' clean_raw_data Cleans the raw data.
+#' 
+#' @param raw_data The raw data to clean (the output of get_raw_data)
+#' @details Removes uneeded rows, renamss localities to make their names consistent across years and converts columns with prices to numeric columns.
+#' @importFrom dplyr mutate filter across starts_with
+#' @return A data frame
+#' @export
 clean_raw_data <- function(raw_data){
   raw_data %>%
-    mutate(locality = ifelse(grepl("Luxembourg-Ville", locality),
-                             "Luxembourg",
-                             locality),
-           locality = ifelse(grepl("P.tange", locality),
-                             "Pétange",
-                             locality)
-           ) %>%
+    mutate(locality = 
+             case_when (
+              grepl("Luxembourg-Ville", locality) ~ "Luxembourg",
+              grepl("P.tange", locality) ~ "Pétange",
+              TRUE ~ locality
+             )
+    ) %>%
     filter(!grepl("Source", locality)) %>%
     mutate(across(starts_with("average"), as.numeric))
 }
@@ -110,7 +116,18 @@ were mergers in 2011, 2015 and 2018. So we need to account for these localities.
 
 We’re now scraping data from wikipedia of former Luxembourguish communes:
 
-```{r}
+```{r function-get_former_communes}
+#' get_former_communes Downloads list of former communes from Wikipedia
+#' 
+#' @param url Optional: Persistent url to the data
+#' @param min_year Optional: Minimum year to consider. Defaults to 2009 because price data starts in 2010
+#' @param table_position Optional: Scraping returns a list of tables, so users need to specify tje correct table. Defaults to 3, the position of the table as of writing. 
+#' @importFrom rvest read_html html_table
+#' @importFrom dplyr filter
+#' @importFrom purrr pluck 
+#' @importFrom janitor clean_names
+#' @return A data frame
+#' @export 
 get_former_communes <- function(
             url = "https://is.gd/lux_former_communes",
             min_year = 2009,
@@ -132,7 +149,18 @@ former_communes <- get_former_communes()
 
 We can scrape current communes:
 
-```{r}
+```{r function-get_current_communes}
+#' get)current_communes Downloads the list of current communes from Wikipedia 
+#' 
+#' @param url Optional: Persistent url to the data
+#' @param table_position Optional: Scraping returns a list of tables, so users need to specify the correct table. Defaults to 1, the position of the table as of writing.
+#' @importFrom rvest read_html html_table
+#' @importFrom purrr pluck
+#' @importFrom janitor clean_names
+#' @importFrom dplyr filter rename mutate
+#' @importFrom stringr str_remove
+#' @return A data frame
+#' @export
 get_current_communes <- function(
                  url = "https://is.gd/lux_communes",
                  table_position = 2
@@ -156,7 +184,12 @@ current_communes <- get_current_communes()
 
 Let’s now create a list of all communes:
 
-```{r}
+```{r function-get_test_communes}
+#' get_test_communes Creates a list of communes that shoiuld be in the data
+#' @param former_communes Former communes df returned by get_former_communes()
+#' @param current_communes Current communes of as returned by get_current_communes()
+#' @return A data frame
+#' @export 
 get_test_communes <- function(former_communes, current_communes){
 
   communes <- unique(c(former_communes$name, current_communes$commune))
@@ -185,7 +218,17 @@ communes <- get_test_communes(former_communes, current_communes)
 
 Let’s test to see if all the communes from our dataset are represented.
 
-```{r}
+```{r tests-clean_flat_data}
+# We now need to check if we have them all in the data. The test needs to be self-contained, hence
+# why we need to redefine the required variables
+
+former_communes - get_former_communes()
+current_communes <- get_current_communes()
+communes <- get_test_communes(former_communes, current_communes)
+raw_data <- get_raw_data(url = "https://github.com/b-rodrigues/rap4all/raw/master/datasets/vente-maison-2010-2021.xlsx")
+flat_data <- clean_raw_data(raw_data)
+
+testthat::expect_true(all(communes %in% unique(flat_data$locality)))
 setdiff(flat_data$locality, communes)
 ```
 
@@ -194,7 +237,13 @@ accounting for every commune.
 
 Let’s keep the national average in another dataset:
 
-```{r}
+```{r function-make_country_level_data}
+#' make_country_level_data Makes the final data at country level
+#' 
+#' @param flat_data flat data df as returned by clean_flat_data()
+#' @importFrom dplyr filter select mutate full_join
+#' @return A data frame
+#' @export
 make_country_level_data <- function(flat_data){
   country_level <- flat_data %>%
     filter(grepl("nationale", locality)) %>%
@@ -218,7 +267,13 @@ country_level_data <- make_country_level_data(flat_data)
 
 We can finish cleaning the commune data:
 
-```{r}
+```{r function-make_commune_level_data}
+#' make_commune_level_data makes the final data at commune level
+#' 
+#' @param flat_data Flat data df as returned by clean_flat_data()
+#' @importFrom dplyr filter
+#' @return A data frame
+#' @export
 make_commune_level_data <- function(flat_data){
   flat_data %>%
     filter(!grepl("nationale|offres", locality),
